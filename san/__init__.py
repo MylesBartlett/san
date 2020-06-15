@@ -4,16 +4,16 @@
 """
 The code containing neural network part, Skrlj 2019
 """
-from typing import Optional, Sequence, Union
-import torch
-
-# from torch.utils.data import DataLoader
-import torch.nn as nn
-from sklearn.preprocessing import OneHotEncoder
-from torch.utils.data import DataLoader, Dataset
 import logging
+from typing import Optional, Sequence, Tuple, Union
+
 import numpy as np
 import pandas as pd
+import torch
+import torch.nn as nn
+from sklearn.preprocessing import OneHotEncoder
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset
 
 torch.manual_seed(123321)
 np.random.seed(123321)
@@ -22,35 +22,33 @@ logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:
 logging.getLogger().setLevel(logging.INFO)
 
 
-class E2EDatasetLoader(Dataset):
+class TabularDataset(Dataset):
     def __init__(
         self,
         features: Union[np.ndarray, pd.DataFrame],
         targets: Optional[Union[np.ndarray, pd.DataFrame]] = None,
     ):  # , transform=None
+
         if isinstance(features, pd.DataFrame):
             features = features.values
         if isinstance(targets, pd.DataFrame):
             target = targets.values
-        self.features = features
-        self.targets = targets
+        self.features = torch.as_tensor(features, dtype=torch.float).flatten(start_dim=1)
+        self.targets = torch.as_tensor(targets, dtype=torch.long).flatten(start_dim=1)
+        unique_per_feat = [torch.unique(self.targets[:, i]) for i in range(self.targets.size(1))]
+        self.num_classes = [len(unique) for unique in unique_per_feat]
 
     def __len__(self):
         return self.features.shape[0]
 
-    def __getitem__(self, index: int):
-        instance = torch.as_tensor(self.features[index, :])
+    def __getitem__(self, index: int) -> Tuple[Tensor, Optional[Tensor]]:
+        x = self.features[index]
         if self.targets is not None:
-            target = torch.as_tensor(self.targets[index])
+            y = self.targets[index]
         else:
-            target = None
+            y = None
 
-        return instance, target
-
-
-def to_one_hot(lbx):
-    enc = OneHotEncoder(handle_unknown="ignore")
-    return enc.fit_transform(lbx.reshape(-1, 1))
+        return x, y
 
 
 class SANNetwork(nn.Module):
@@ -63,11 +61,11 @@ class SANNetwork(nn.Module):
         num_heads=2,
         device="cpu",
     ):
-        super(SANNetwork, self).__init__()
+        super().__init__()
         self.device = device
 
-        self.multi_head = torch.nn.ModuleList(
-            [torch.nn.Linear(input_size, input_size) for _ in [1] * num_heads]
+        self.multi_head = nn.ModuleList(
+            [nn.Linear(input_size, input_size) for _ in [1] * num_heads]
         )
 
         self.fc_net = nn.Sequential(
@@ -112,12 +110,20 @@ class SANNetwork(nn.Module):
 
         return output_mean
 
-    def forward(self, x):
+    def split_outputs(self, outputs: Tensor):
+        if self.num_targets > 1:
+            outputs = outputs.split(self.num_classes, dim=1)
+        return outputs
+
+    def forward(
+        self, x: Tensor, split: bool = False
+    ) -> Tensor:  # Union[Tuple[Tensor, ...], Tensor]:
 
         # attend and aggregate
         out = self.forward_attention(x)
         out = self.fc_net(out)
-
+        # if split:
+        #     out = self.split_outputs(out)
         return out
 
     def get_attention(self, x):
@@ -130,39 +136,35 @@ class SANNetwork(nn.Module):
 class SAN:
     def __init__(
         self,
-        batch_size=32,
-        num_epochs=32,
-        learning_rate=0.001,
-        stopping_crit=10,
-        hidden_layer_size=64,
-        dropout=0.2,
+        batch_size: int = 32,
+        num_epochs: int = 32,
+        learning_rate: float = 0.001,
+        stopping_crit: int = 10,
+        hidden_layer_size: int = 64,
+        dropout: float = 0.2,
     ):  # , num_head=1
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.loss = torch.nn.CrossEntropyLoss()
+        self.loss = nn.CrossEntropyLoss()
         self.dropout = dropout
         self.batch_size = batch_size
         self.stopping_crit = stopping_crit
         self.num_epochs = num_epochs
         self.hidden_layer_size = hidden_layer_size
         self.learning_rate = learning_rate
-        self.model = None
-        self.optimizer = None
+        self.model: SANNetwork
+        self.optimizer: torch.optim.Adam
         self.num_params = None
 
-    # not used:
-    # def init_all(self, model, init_func, *params, **kwargs):
-    #     for p in model.parameters():
-    #         init_func(p, *params, **kwargs)
-
-    def fit(self, features, labels):  # , onehot=False
-        unique_per_feat = [np.unique(labels[:, i]) for i in range(labels.shape[1])]
-        train_dataset = E2EDatasetLoader(features, labels)
+    def fit(
+        self, features: Union[np.ndarray, pd.DataFrame], labels: Union[np.ndarray, pd.DataFrame]
+    ):
+        train_dataset = TabularDataset(features, labels)
         dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         stopping_iteration = 0
         current_loss = 10000
         self.model = SANNetwork(
             features.shape[1],
-            num_classes=[len(unique) for unique in unique_per_feat],
+            num_classes=train_dataset.num_classes,
             hidden_layer_size=self.hidden_layer_size,
             dropout=self.dropout,
             device=self.device,
@@ -175,23 +177,24 @@ class SAN:
             if stopping_iteration > self.stopping_crit:
                 logging.info("Stopping reached!")
                 break
+
+            self.model.train()
             losses_per_batch = []
-            for i, (features, labels) in enumerate(dataloader):
-                features = features.float().to(self.device)
-                labels = labels.long().to(self.device)
-                self.model.train()
-                outputs = self.model.forward(features)
+            for i, (x, y) in enumerate(dataloader):
+                features = x.float().to(self.device)
+                labels = y.long().to(self.device)
+                outputs = self.model.forward(x, split=False)
                 outputs = outputs.flatten(start_dim=1)
-                loss = features.new_zeros(())
+                loss = x.new_zeros(())
 
                 if self.model.num_targets > 1:
                     start_dim = 0
                     for target_idx, out_dim in enumerate(self.model.num_classes):
                         end_dim = start_dim + out_dim
-                        loss += self.loss(outputs[:, start_dim:end_dim], labels[:, target_idx])
+                        loss += self.loss(outputs[:, start_dim:end_dim], y[:, target_idx])
                         start_dim = end_dim
                 else:
-                    loss = self.loss(outputs, labels)
+                    loss = self.loss(outputs, y)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -206,13 +209,13 @@ class SAN:
             logging.info("epoch {}, mean loss per batch {}".format(epoch, mean_loss))
 
     def predict(self, features, return_proba=False):
-        test_dataset = E2EDatasetLoader(features, None)
+        test_dataset = TabularDataset(features, None)
+        self.model.eval()
         predictions = []
         with torch.no_grad():
-            for features, _ in test_dataset:
-                self.model.eval()
-                features = features.float().to(self.device)
-                representation = self.model.forward(features)
+            for x, _ in test_dataset:
+                x = x.float().to(self.device)
+                representation = self.model.forward(x)
                 pred = representation.detach().cpu().numpy()[0]
                 predictions.append(pred)
         if not return_proba:
@@ -225,7 +228,7 @@ class SAN:
         return np.array(a).flatten()
 
     def predict_proba(self, features):
-        test_dataset = E2EDatasetLoader(features, None)
+        test_dataset = TabularDataset(features, None)
         predictions = []
         self.model.eval()
         with torch.no_grad():
