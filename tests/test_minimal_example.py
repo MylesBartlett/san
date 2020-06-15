@@ -7,8 +7,8 @@ import seaborn as sns
 def test_simple_ranking():
     sns.set_style("whitegrid")
     dataobj = load_breast_cancer()
-    x = dataobj['data']
-    y = dataobj['target']
+    x = dataobj["data"]
+    y = dataobj["target"]
     # let's overfit, just for demo purposes
     clf = san.SAN(num_epochs=18, num_head=2, batch_size=8, dropout=0.05, hidden_layer_size=32)
     x = sparse.csr_matrix(x)

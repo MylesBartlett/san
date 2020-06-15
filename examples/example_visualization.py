@@ -11,9 +11,9 @@ from sklearn.ensemble import RandomForestClassifier
 def test_simple_ranking():
     sns.set_style("whitegrid")
     data_obj = load_breast_cancer()
-    x = data_obj['data']
-    y = data_obj['target']
-    names = data_obj['feature_names']
+    x = data_obj["data"]
+    y = data_obj["target"]
+    names = data_obj["feature_names"]
 
     # let's overfit, just for demo purposes
     clf = san.SAN(num_epochs=32, num_head=2, batch_size=8, dropout=0.2, hidden_layer_size=32)
@@ -28,9 +28,13 @@ def test_simple_ranking():
     rf = rf_model.feature_importances_
 
     plt.plot(names, global_attention_weights, label="Global attention", marker="x")
-    plt.plot(names, np.mean(local_attention_matrix, axis=0), label="Local attention - mean", marker="x")
+    plt.plot(
+        names, np.mean(local_attention_matrix, axis=0), label="Local attention - mean", marker="x"
+    )
 
-    plt.plot(names, np.max(local_attention_matrix, axis=0), label="Local attention - max", marker="x")
+    plt.plot(
+        names, np.max(local_attention_matrix, axis=0), label="Local attention - max", marker="x"
+    )
 
     plt.plot(names, mutual_information, label="Mutual information", marker=".")
 
