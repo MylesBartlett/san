@@ -13,6 +13,7 @@ from sklearn.preprocessing import OneHotEncoder
 from torch.utils.data import DataLoader, Dataset
 import logging
 import numpy as np
+import pandas as pd
 
 torch.manual_seed(123321)
 np.random.seed(123321)
@@ -23,18 +24,24 @@ logging.getLogger().setLevel(logging.INFO)
 
 class E2EDatasetLoader(Dataset):
     def __init__(
-        self, features: np.ndarray, targets: Optional[np.ndarray] = None
+        self,
+        features: Union[np.ndarray, pd.DataFrame],
+        targets: Optional[Union[np.ndarray, pd.DataFrame]] = None,
     ):  # , transform=None
-        self.features = features.tocsr()
+        if isinstance(features, pd.DataFrame):
+            features = features.values
+        if isinstance(targets, pd.DataFrame):
+            target = targets.values
+        self.features = features
         self.targets = targets
 
     def __len__(self):
         return self.features.shape[0]
 
     def __getitem__(self, index: int):
-        instance = torch.as_tensor(self.features[index, :].todense())
+        instance = torch.as_tensor(self.features[index, :])
         if self.targets is not None:
-            target = torch.as_tensor(np.array(self.targets[index]))
+            target = torch.as_tensor(self.targets[index])
         else:
             target = None
 
@@ -148,7 +155,7 @@ class SAN:
     #         init_func(p, *params, **kwargs)
 
     def fit(self, features, labels):  # , onehot=False
-        unique_per_feat = np.unique(labels, axis=0)
+        unique_per_feat = [np.unique(labels[:, i]) for i in range(labels.shape[1])]
         train_dataset = E2EDatasetLoader(features, labels)
         dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         stopping_iteration = 0
@@ -181,9 +188,7 @@ class SAN:
                     start_dim = 0
                     for target_idx, out_dim in enumerate(self.model.num_classes):
                         end_dim = start_dim + out_dim
-                        loss += self.loss(
-                            outputs[:, start_dim:end_dim], labels[:, target_idx]
-                        )
+                        loss += self.loss(outputs[:, start_dim:end_dim], labels[:, target_idx])
                         start_dim = end_dim
                 else:
                     loss = self.loss(outputs, labels)
