@@ -26,7 +26,7 @@ class TabularDataset(Dataset):
         unique_per_feat = [torch.unique(self.targets[:, i]) for i in range(self.targets.size(1))]
         self.num_classes = [len(unique) for unique in unique_per_feat]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.features.shape[0]
 
     def __getitem__(self, index: int) -> Tuple[Tensor, Optional[Tensor]]:

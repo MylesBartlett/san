@@ -1,5 +1,5 @@
 import logging
-from typing import Sequence, Union
+from typing import Iterator, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -101,7 +101,7 @@ class Controller:
             self.logger.info(f"epoch {epoch}, mean loss per batch {mean_loss}")
 
     @staticmethod
-    def _to_numpy(*tensors: Tensor):
+    def _to_numpy(*tensors: Tensor) -> Iterator[Tensor]:
         for tensor in tensors:
             yield tensor.detach().cpu().numpy()
 
@@ -131,11 +131,9 @@ class Controller:
 
     @property
     def mean_attention_weights(self):
-        return self._to_numpy(self.model.mean_attention_weights)
-
-    def get_mean_attention_weights(self):
+        import pdb; pdb.set_trace()
         return self._to_numpy(self.model.multi_head.mean_attention_weights)
 
-    def get_instance_attention(self, features):
-        features = torch.as_tensor(features, dtype=torch.float).to(self.device)
-        return self._to_numpy(self.model.multi_head(features, return_softmax=True))
+    def get_instance_attention(self, features: np.ndarray):
+        features_t = torch.as_tensor(features, dtype=torch.float).to(self.device)
+        return self._to_numpy(self.model.multi_head(features_t, return_softmax=True))
