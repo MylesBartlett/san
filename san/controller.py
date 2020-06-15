@@ -14,6 +14,13 @@ from .utils import TabularDataset
 __all__ = ["Controller"]
 
 
+torch.manual_seed(123321)
+np.random.seed(123321)
+
+logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+logging.getLogger().setLevel(logging.INFO)
+
+
 class Controller:
     def __init__(
         self,
@@ -42,7 +49,7 @@ class Controller:
     def _compute_loss(self, logits: Tensor, targets: Tensor) -> Tensor:
         if self.model.num_targets > 1:
             loss = logits.new_zeros(())
-            for target_idx, logits_k in self.model.split_outputs(logits):
+            for target_idx, logits_k in enumerate(self.model.split_outputs(logits)):
                 loss += self.loss(logits_k, targets[:, target_idx])
         else:
             loss = self.loss(logits, targets)
@@ -50,7 +57,9 @@ class Controller:
 
     def fit(self, x_data: Union[np.ndarray, pd.DataFrame], y_data: Union[np.ndarray, pd.DataFrame]):
         train_dataset = TabularDataset(x_data, y_data)
-        dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+        dataloader = DataLoader(
+            train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=0
+        )
         stopping_iteration = 0
         current_loss = float("inf")
 
@@ -91,6 +100,11 @@ class Controller:
                 stopping_iteration += 1
             logging.info(f"epoch {epoch}, mean loss per batch {mean_loss}")
 
+    @staticmethod
+    def _to_numpy(*tensors: Tensor):
+        for tensor in tensors:
+            yield tensor.detach().cpu().numpy()
+
     def predict(self, features: Union[pd.DataFrame, np.ndarray], return_prob: bool = False):
         test_dataset = TabularDataset(features)
         dataloader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
@@ -102,27 +116,26 @@ class Controller:
                 logits_ls.append(self.model.forward(x))
 
         logits = self.model.split_outputs(torch.cat(logits_ls, dim=0))
+
         if isinstance(logits, tuple):
             for logits_k in logits:
                 if return_prob:
-                    yield logits_k.softmax(1).detach().cpu().numpy()
+                    yield self._to_numpy(logits_k.softmax(1))
                 else:
-                    yield logits_k.argmax(1).detach().cpu().numpy()
+                    yield self._to_numpy(logits_k.argmax(1))
         else:
             if return_prob:
-                return logits.softmax(1).detach().cpu().numpy()
+                return self._to_numpy(logits.softmax(1))
             else:
-                return logits.argmax(1).detach().cpu().numpy()
-
-        return np.array(a).flatten()
+                return self._to_numpy(logits.argmax(1))
 
     @property
     def mean_attention_weights(self):
-        return self.model.mean_attention_weights.detach().cpu().numpy()
+        return self._to_numpy(self.model.mean_attention_weights)
 
     def get_mean_attention_weights(self):
-        return self.model.multi_head.mean_attention_weights.detach().cpu().numpy()
+        return self._to_numpy(self.model.multi_head.mean_attention_weights)
 
     def get_instance_attention(self, instance_space):
         instance_space = torch.as_tensor(instance_space, dtype=torch.float).to(self.device)
-        return self.model.multi_head(instance_space, return_softmax=True).detach().cpu().numpy()
+        return self._to_numpy(self.model.multi_head(instance_space, return_softmax=True))
