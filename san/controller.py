@@ -81,8 +81,8 @@ class Controller:
                 break
 
             self.model.train()
-            losses_per_batch = []
-            for i, (x, y) in enumerate(dataloader):
+            sum_losses = 0.0
+            for x, y in dataloader:
                 x = x.to(self.device)
                 y = y.to(self.device)
                 outputs = self.model.forward(x)
@@ -91,9 +91,9 @@ class Controller:
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-                losses_per_batch.append(float(loss))
+                sum_losses += loss.item()
 
-            mean_loss = np.mean(losses_per_batch)
+            mean_loss = sum_losses / len(dataloader)
             if mean_loss < current_loss:
                 current_loss = mean_loss
             else:
