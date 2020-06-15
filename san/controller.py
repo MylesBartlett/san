@@ -9,16 +9,9 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 
 from .model import SANNetwork
-from .utils import TabularDataset
+from .utils import TabularDataset, random_seed
 
 __all__ = ["Controller"]
-
-
-torch.manual_seed(123321)
-np.random.seed(123321)
-
-logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
-logging.getLogger().setLevel(logging.INFO)
 
 
 class Controller:
@@ -31,6 +24,7 @@ class Controller:
         hidden_layer_size: int = 64,
         num_heads: int = 1,
         dropout: float = 0.2,
+        seed: int = 247,
     ):
         self.hidden_layer_size = hidden_layer_size
         self.num_heads = num_heads
@@ -45,6 +39,12 @@ class Controller:
         self.loss = nn.CrossEntropyLoss()
         self.optimizer: torch.optim.Adam
         self.stopping_crit = stopping_crit
+
+        logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+
+        random_seed(seed_value=seed, use_cuda=str(self.device) != "cpu")
 
     def _compute_loss(self, logits: Tensor, targets: Tensor) -> Tensor:
         if self.model.num_targets > 1:
@@ -73,11 +73,11 @@ class Controller:
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.num_params = sum(p.numel() for p in self.model.parameters())
-        logging.info("Number of parameters: {self.num_params}")
-        logging.info("Starting training for {self.num_epochs} epochs")
+        self.logger.info("Number of parameters: {self.num_params}")
+        self.logger.info("Starting training for {self.num_epochs} epochs")
         for epoch in range(self.num_epochs):
             if stopping_iteration > self.stopping_crit:
-                logging.info("Stopping reached!")
+                self.logger.info("Stopping reached!")
                 break
 
             self.model.train()
@@ -98,7 +98,7 @@ class Controller:
                 current_loss = mean_loss
             else:
                 stopping_iteration += 1
-            logging.info(f"epoch {epoch}, mean loss per batch {mean_loss}")
+            self.logger.info(f"epoch {epoch}, mean loss per batch {mean_loss}")
 
     @staticmethod
     def _to_numpy(*tensors: Tensor):
@@ -136,6 +136,6 @@ class Controller:
     def get_mean_attention_weights(self):
         return self._to_numpy(self.model.multi_head.mean_attention_weights)
 
-    def get_instance_attention(self, instance_space):
-        instance_space = torch.as_tensor(instance_space, dtype=torch.float).to(self.device)
-        return self._to_numpy(self.model.multi_head(instance_space, return_softmax=True))
+    def get_instance_attention(self, features):
+        features = torch.as_tensor(features, dtype=torch.float).to(self.device)
+        return self._to_numpy(self.model.multi_head(features, return_softmax=True))

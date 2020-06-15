@@ -1,3 +1,4 @@
+import random
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -6,7 +7,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-__all__ = ["TabularDataset"]
+__all__ = ["TabularDataset", "random_seed"]
 
 
 class TabularDataset(Dataset):
@@ -36,3 +37,14 @@ class TabularDataset(Dataset):
             y = None
 
         return x, y
+
+
+def random_seed(seed_value: int, use_cuda: bool) -> None:
+    np.random.seed(seed_value)  # cpu vars
+    torch.manual_seed(seed_value)  # cpu  vars
+    random.seed(seed_value)  # Python
+    if use_cuda:
+        torch.cuda.manual_seed(seed_value)
+        torch.cuda.manual_seed_all(seed_value)  # gpu vars
+        torch.backends.cudnn.deterministic = True  # needed
+        torch.backends.cudnn.benchmark = False
