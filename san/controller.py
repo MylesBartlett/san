@@ -115,18 +115,17 @@ class Controller:
         self.model.eval()
         logits_ls = []
         with torch.no_grad():
-            for x, _ in dataloader:
+            for x in dataloader:
                 x = x.to(self.device)
                 logits_ls.append(self.model.forward(x))
 
         logits = self.model.split_outputs(torch.cat(logits_ls, dim=0))
 
         if isinstance(logits, tuple):
-            for logits_k in logits:
-                if return_prob:
-                    yield self._to_numpy(logits_k.softmax(1))
-                else:
-                    yield self._to_numpy(logits_k.argmax(1))
+            if return_prob:
+                return (self._to_numpy(logits_k.softmax(1)) for logits_k in logits)
+            else:
+                return (self._to_numpy(logits_k.argmax(1)) for logits_k in logits)
         else:
             if return_prob:
                 return self._to_numpy(logits.softmax(1))
