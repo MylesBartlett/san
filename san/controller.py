@@ -106,9 +106,8 @@ class Controller:
             self.logger.info(f"Epoch {epoch} - mean loss per batch: {mean_loss:.4f}")
 
     @staticmethod
-    def _to_numpy(*tensors: Tensor) -> Iterator[Tensor]:
-        for tensor in tensors:
-            yield tensor.detach().cpu().numpy()
+    def _to_numpy(tensor: Tensor) -> np.ndarray:
+        return tensor.detach().cpu().numpy()
 
     def predict(self, features: Union[pd.DataFrame, np.ndarray], return_prob: bool = False):
         test_dataset = TabularDataset(features)
