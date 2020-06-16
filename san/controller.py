@@ -52,7 +52,7 @@ class Controller:
             for target_idx, logits_k in enumerate(self.model.split_outputs(logits)):
                 loss += self.loss(logits_k, targets[:, target_idx])
         else:
-            loss = self.loss(logits, targets)
+            loss = self.loss(logits, targets.view(-1))
         return loss
 
     def fit(
@@ -78,8 +78,8 @@ class Controller:
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.num_params = sum(p.numel() for p in self.model.parameters())
-        self.logger.info("Number of parameters: {self.num_params}")
-        self.logger.info("Starting training for {self.num_epochs} epochs")
+        self.logger.info(f"Number of parameters: {self.num_params}")
+        self.logger.info(f"Starting training for {self.num_epochs} epochs")
         for epoch in range(self.num_epochs):
             if stopping_iteration > self.stopping_crit:
                 self.logger.info("Stopping reached!")
@@ -103,7 +103,7 @@ class Controller:
                 current_loss = mean_loss
             else:
                 stopping_iteration += 1
-            self.logger.info(f"epoch {epoch}, mean loss per batch {mean_loss}")
+            self.logger.info(f"Epoch {epoch} - mean loss per batch: {mean_loss:.4f}")
 
     @staticmethod
     def _to_numpy(*tensors: Tensor) -> Iterator[Tensor]:

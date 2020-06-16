@@ -21,8 +21,8 @@ class TabularDataset(Dataset):
             features = features.values
         if isinstance(targets, pd.DataFrame):
             target = targets.values
-        self.features = torch.as_tensor(features, dtype=torch.float).flatten(start_dim=1)
-        self.targets = torch.as_tensor(targets, dtype=torch.long).flatten(start_dim=1)
+        self.features = torch.as_tensor(features, dtype=torch.float)
+        self.targets = torch.as_tensor(targets, dtype=torch.long).view(self.features.size(0), -1)
         unique_per_feat = [torch.unique(self.targets[:, i]) for i in range(self.targets.size(1))]
         self.num_classes = [len(unique) for unique in unique_per_feat]
 
