@@ -1,5 +1,5 @@
 import logging
-from typing import Iterator, Sequence, Union
+from typing import Iterator, Sequence, Union, Optional
 
 import numpy as np
 import pandas as pd
@@ -55,7 +55,12 @@ class Controller:
             loss = self.loss(logits, targets)
         return loss
 
-    def fit(self, x_data: Union[np.ndarray, pd.DataFrame], y_data: Union[np.ndarray, pd.DataFrame]):
+    def fit(
+        self,
+        x_data: Union[np.ndarray, pd.DataFrame],
+        y_data: Union[np.ndarray, pd.DataFrame],
+        freeze_inds: Optional[Sequence[int]] = None,
+    ):
         train_dataset = TabularDataset(x_data, y_data)
         dataloader = DataLoader(
             train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=0
@@ -85,7 +90,7 @@ class Controller:
             for x, y in dataloader:
                 x = x.to(self.device)
                 y = y.to(self.device)
-                outputs = self.model.forward(x)
+                outputs = self.model.forward(x, freeze_inds=freeze_inds)
 
                 loss = self._compute_loss(outputs, y)
                 self.optimizer.zero_grad()
@@ -131,7 +136,6 @@ class Controller:
 
     @property
     def mean_attention_weights(self):
-        import pdb; pdb.set_trace()
         return self._to_numpy(self.model.multi_head.mean_attention_weights)
 
     def get_instance_attention(self, features: np.ndarray):

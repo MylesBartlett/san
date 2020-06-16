@@ -1,4 +1,4 @@
-from typing import Sequence, Tuple, Union
+from typing import Sequence, Tuple, Union, Optional
 
 import numpy as np
 import torch.nn as nn
@@ -40,8 +40,8 @@ class SANNetwork(nn.Module):
             outputs = outputs.split(self.num_classes, dim=1)
         return outputs
 
-    def forward(self, x: Tensor) -> Tensor:
-        out = self.multi_head(x)
+    def forward(self, x: Tensor, freeze_inds: Optional[Sequence[int]] = None) -> Tensor:
+        out = self.multi_head(x, freeze_inds=freeze_inds)
         out = self.classifier(out)
 
         return out

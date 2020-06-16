@@ -1,5 +1,8 @@
+import torch
 import torch.nn as nn
 from torch import Tensor
+from typing import Optional, Sequence
+import torch.nn.functional as F
 
 __all__ = ["MultiHeadAttention"]
 
@@ -17,11 +20,19 @@ class MultiHeadAttention(nn.Linear):
 
         return output_mean
 
-    def forward(self, x: Tensor, return_softmax=False):
+    def forward(self, x: Tensor, freeze_inds: Optional[Sequence[int]] = None, return_softmax=False):
         out = super().forward(x)
         out = out.view(-1, self.num_heads, self.in_features).softmax(dim=-1)
+
+        if freeze_inds is not None:
+            freeze_inds_t = torch.as_tensor(freeze_inds, dtype=torch.long)
+            out = out.clone()
+            out[:, :, freeze_inds] = 1.0
+            import pdb
+
+            pdb.set_trace()
+
         if not return_softmax:
             out = out * x.unsqueeze(1)
 
         return out.max(dim=1, keepdim=False)[0]
-
