@@ -20,7 +20,9 @@ class MultiHeadAttention(nn.Linear):
 
         return output_mean
 
-    def forward(self, x: Tensor, *, freeze_inds: Optional[Sequence[int]] = None, return_softmax=False):
+    def forward(
+        self, x: Tensor, *, freeze_inds: Optional[Sequence[int]] = None, return_softmax=False
+    ):
         out = super().forward(x)
         out = out.view(-1, self.num_heads, self.in_features).softmax(dim=-1)
 
