@@ -28,9 +28,6 @@ class MultiHeadAttention(nn.Linear):
             freeze_inds_t = torch.as_tensor(freeze_inds, dtype=torch.long)
             out = out.clone()
             out[:, :, freeze_inds] = 1.0
-            import pdb
-
-            pdb.set_trace()
 
         if not return_softmax:
             out = out * x.unsqueeze(1)
